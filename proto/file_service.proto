@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package fileservice.v1;
+option go_package = "./proto";
+
+import "proto/common.proto";
+import "google/protobuf/empty.proto";
+
+service FileService {
+  // Upload a file using streaming
+  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse);
+  
+  // Download a file using streaming  
+  rpc DownloadFile(DownloadFileRequest) returns (stream DownloadFileResponse);
+  
+  // List files with pagination
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+  
+  // Get file metadata
+  rpc GetFileInfo(GetFileInfoRequest) returns (FileInfo);
+  
+  // Delete a file
+  rpc DeleteFile(DeleteFileRequest) returns (google.protobuf.Empty);
+  
+  // Watch for file changes
+  rpc WatchFiles(WatchFilesRequest) returns (stream FileEvent);
+}
+
+message UploadFileRequest {
+  oneof request {
+    FileMetadata metadata = 1;
+    FileChunk chunk = 2;
+  }
+}
+
+message FileMetadata {
+  string name = 1;
+  string content_type = 2;
+  map<string, string> custom_metadata = 3;
+}
+
+message UploadFileResponse {
+  string file_id = 1;
+  int64 bytes_written = 2;
+}
+
+message DownloadFileRequest {
+  string file_id = 1;
+  int64 offset = 2;      // Optional: start from offset
+  int64 limit = 3;       // Optional: limit bytes
+}
+
+message DownloadFileResponse {
+  FileChunk chunk = 1;
+}
+
+message ListFilesRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string filter = 3;     // Simple filter like "name=*.txt"
+}
+
+message ListFilesResponse {
+  repeated FileInfo files = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message GetFileInfoRequest {
+  string file_id = 1;
+}
+
+message DeleteFileRequest {
+  string file_id = 1;
+}
+
+message WatchFilesRequest {
+  repeated string file_ids = 1;  // Empty means watch all
+}
+
+message FileEvent {
+  enum EventType {
+    EVENT_TYPE_UNSPECIFIED = 0;
+    EVENT_TYPE_CREATED = 1;
+    EVENT_TYPE_UPDATED = 2;
+    EVENT_TYPE_DELETED = 3;
+  }
+  
+  EventType event_type = 1;
+  FileInfo file_info = 2;
+}
