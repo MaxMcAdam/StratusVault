@@ -29,8 +29,14 @@ func main() {
 
 type fileServiceServer struct {
 	storage *storage.StorageBackend
-	metaDB  *metadata.MetadataStore
+	metaDB  *metadata.MetadataDB
 	logger  log.Logger
+}
+
+func Init() *fileServiceServer {
+	metaDB := metadata.Init()
+
+	return &fileServiceServer{metaDB: metaDB}
 }
 
 func (s *fileServiceServer) UploadFile(grpc.ClientStreamingServer[proto.UploadFileRequest, proto.UploadFileResponse]) error {

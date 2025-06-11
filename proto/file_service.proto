@@ -56,13 +56,13 @@ message DownloadFileResponse {
 
 message ListFilesRequest {
   int32 page_size = 1;
-  string page_token = 2;
+  uint64 page_token = 2;
   string filter = 3;     // Simple filter like "name=*.txt"
 }
 
 message ListFilesResponse {
   repeated FileInfo files = 1;
-  string next_page_token = 2;
+  uint64 next_page_token = 2;
   int32 total_count = 3;
 }
 
