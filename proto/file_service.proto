@@ -36,7 +36,9 @@ message UploadFileRequest {
 message FileMetadata {
   string name = 1;
   string content_type = 2;
-  map<string, string> custom_metadata = 3;
+  string mime_type = 3;
+  int64 size = 4;
+  map<string, string> custom_metadata = 5;
 }
 
 message UploadFileResponse {
@@ -68,10 +70,12 @@ message ListFilesResponse {
 
 message GetFileInfoRequest {
   string file_id = 1;
+  string file_name = 2;
 }
 
 message DeleteFileRequest {
   string file_id = 1;
+  string file_name = 2;
 }
 
 message WatchFilesRequest {

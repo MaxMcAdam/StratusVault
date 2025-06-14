@@ -3,7 +3,9 @@ module github.com/MaxMcAdam/StratusVault
 go 1.24.3
 
 require (
-	github.com/go-redis/redis/v8 v8.11.5
+	github.com/google/uuid v1.6.0
+	github.com/redis/go-redis/v9 v9.10.0
+	golang.org/x/sync v0.11.0
 	google.golang.org/grpc v1.72.2
 	google.golang.org/protobuf v1.36.5
 )
