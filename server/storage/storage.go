@@ -55,12 +55,6 @@ func (s *StorageBackend) HandleTempFileUpload(stream grpc.ClientStreamingServer[
 		firstChunk = true
 	)
 
-	dirPath := filepath.Dir(tempPath)
-	err := os.MkdirAll(dirPath, 0755)
-	if err != nil {
-		return fmt.Errorf("error creating directories:", err)
-	}
-
 	// Process streaming chunks
 	for {
 		select {
@@ -252,6 +246,12 @@ func (s *StorageBackend) MoveFile(ctx context.Context, tempPath string, info *pr
 }
 
 func (s *StorageBackend) AppendToFile(ctx context.Context, tempPath string, b []byte) error {
+	dirPath := filepath.Dir(tempPath)
+	err := os.MkdirAll(dirPath, 0755)
+	if err != nil {
+		return fmt.Errorf("error creating directories:", err)
+	}
+
 	file, err := os.OpenFile(tempPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return err

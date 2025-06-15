@@ -3,10 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
-	"os"
-	"path/filepath"
 
 	"github.com/MaxMcAdam/StratusVault/proto"
 	"google.golang.org/grpc"
@@ -28,96 +25,19 @@ func main() {
 		fmt.Printf("Client is nil\n")
 	}
 
-	// err = uploadFile(client, "./testfile")
-
+	// err = UploadFile(client, "./testfile")
 	// if err != nil {
 	// 	fmt.Printf("Error uploading testfile: %v", err)
-	// 	os.Exit(1)
 	// }
 
-	// fmt.Printf("Finished uploading file.\n")
+	// err = DownloadFile(client, "testfile", "", &config.ClientConfig{ChunkSize: 5})
+	// if err != nil {
+	// 	fmt.Printf("Error downloading testfile: %v", err)
+	// }
 
-	resp, err := client.ListFiles(context.Background(), &proto.ListFilesRequest{PageSize: 3, PageToken: 0})
-	fmt.Printf("Resp: %v\nErr: %v", resp, err)
-}
+	_, err = client.DeleteFile(context.Background(), &proto.DeleteFileRequest{FileId: "69251d23-0932-4888-8157-1fa9dd0a07f8"})
+	fmt.Printf("Error is %v", err)
 
-func uploadFile(client proto.FileServiceClient, filePath string) error {
-	fmt.Printf("Starting upload.\n")
-	// Get the stream
-	stream, err := client.UploadFile(context.Background())
-	if err != nil {
-		return fmt.Errorf("failed to create stream: %w", err)
-	}
-
-	fileSize, err := getFileSize(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to find filesize: %v", err)
-	}
-
-	// Send metadata first
-	err = stream.Send(&proto.UploadFileRequest{
-		Request: &proto.UploadFileRequest_Metadata{
-			Metadata: &proto.FileMetadata{
-				Name: filepath.Base(filePath),
-				Size: fileSize,
-			}},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to send metadata: %w", err)
-	}
-
-	// Open and read the file
-	file, err := os.Open(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	// Stream file chunks
-	buffer := make([]byte, 32*1024) // 32KB chunks
-	offset := 0
-	isLast := false
-	for {
-		n, err := file.Read(buffer)
-		if err == io.EOF {
-			break
-			// isLast = true
-		} else if err != nil {
-			return fmt.Errorf("failed to read file: %w", err)
-		}
-
-		// Send chunk
-		err = stream.Send(&proto.UploadFileRequest{
-			Request: &proto.UploadFileRequest_Chunk{
-				Chunk: &proto.FileChunk{
-					Data:   buffer[:n],
-					Offset: int64(offset),
-					IsLast: isLast,
-				}},
-		})
-
-		if err != nil {
-			return fmt.Errorf("failed to send chunk: %w", err)
-		}
-		if isLast {
-			break
-		}
-	}
-
-	// Close stream and get response
-	response, err := stream.CloseAndRecv()
-	if err != nil {
-		return fmt.Errorf("failed to receive response: %w", err)
-	}
-
-	fmt.Printf("Upload successful: %+v\n", response)
-	return nil
-}
-
-func getFileSize(filePath string) (int64, error) {
-	if fileInfo, err := os.Stat(filePath); err != nil {
-		return 0, err
-	} else {
-		return fileInfo.Size(), nil
-	}
+	// resp, err := client.ListFiles(context.Background(), &proto.ListFilesRequest{PageSize: 3, PageToken: 0})
+	// fmt.Printf("Resp: %v\nErr: %v", resp, err)
 }

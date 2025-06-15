@@ -92,7 +92,7 @@ func (m *MetadataDB) GetFileInfo(ctx context.Context, req *proto.GetFileInfoRequ
 	if fileId == "" {
 		fileId, err = m.GetFileIdInIndex(ctx, req.GetFileName())
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("Failed to get file id from index: %v", err)
 		}
 	}
 
@@ -120,12 +120,6 @@ func (m *MetadataDB) SetFileInfo(ctx context.Context, info *proto.FileInfo) erro
 		return err
 	}
 
-	if info.Name != "" {
-		if err = m.SetFileIdInIndex(ctx, info.Name, info.Id); err != nil {
-			return err
-		}
-	}
-
 	fileId := info.Id
 	if fileId == "" {
 		if fileId, err = m.GetFileIdInIndex(ctx, info.Name); err != nil {
@@ -139,14 +133,14 @@ func (m *MetadataDB) SetFileInfo(ctx context.Context, info *proto.FileInfo) erro
 }
 
 // If silent then log errors instead of returning
-func (m *MetadataDB) SetFileInfoStatus(ctx context.Context, fileId, status string, silent bool, l *log.Logger) error {
+func (m *MetadataDB) SetFileInfoStatus(ctx context.Context, fileId, status string, silent bool, l *log.Logger) (*proto.FileInfo, error) {
 	info, err := m.getFileInfo(ctx, fileId)
 	if err != nil {
 		if silent {
 			l.Printf("Error setting status in file metdata: %v", err)
-			return nil
+			return nil, nil
 		}
-		return err
+		return nil, err
 	}
 
 	info.Status = status
@@ -155,15 +149,15 @@ func (m *MetadataDB) SetFileInfoStatus(ctx context.Context, fileId, status strin
 	if err != nil {
 		if silent {
 			l.Printf("Error setting status in file metdata: %v", err)
-			return nil
+			return nil, nil
 		}
-		return err
+		return nil, err
 	}
 
-	return nil
+	return info, nil
 }
 
-func (m *MetadataDB) DeleteFileInfo(ctx context.Context, fileName string) error {
+func (m *MetadataDB) DeleteFileInfo(ctx context.Context, fileId string, fileName string) error {
 	if fileId, err := m.GetFileIdInIndex(ctx, fileName); err != nil {
 		return err
 	} else if _, err := m.client.Del(ctx, getKey(fileId)).Result(); err != nil {

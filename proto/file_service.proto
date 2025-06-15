@@ -48,7 +48,7 @@ message UploadFileResponse {
 
 message DownloadFileRequest {
   string file_id = 1;
-  int64 offset = 2;      // Optional: start from offset
+  string file_name = 2;
   int64 limit = 3;       // Optional: limit bytes
 }
 

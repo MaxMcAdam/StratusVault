@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -74,8 +75,14 @@ func (s *fileServiceServer) UploadFile(stream grpc.ClientStreamingServer[proto.U
 
 	// Update the file's status to reflect successful upload
 	fileInfo.Status = metadata.STATUS_ACTIVE
-	// Add the file metadata to the metadatadb with a temporary status
 	if err := s.metaDB.SetFileInfo(stream.Context(), fileInfo); err != nil {
+		s.storage.CleanupFailedUpload(tempPath, s.logger)
+		s.metaDB.CleanupFailedUpload(stream.Context(), fileInfo.Id, s.logger)
+		return err
+	}
+
+	// Add the file's name in the id index
+	if err := s.metaDB.SetFileIdInIndex(stream.Context(), fileInfo.Name, fileInfo.Id); err != nil {
 		s.storage.CleanupFailedUpload(tempPath, s.logger)
 		s.metaDB.CleanupFailedUpload(stream.Context(), fileInfo.Id, s.logger)
 		return err
@@ -95,7 +102,65 @@ func (s *fileServiceServer) UploadFile(stream grpc.ClientStreamingServer[proto.U
 	return nil
 }
 
-func (s *fileServiceServer) DownloadFile(*proto.DownloadFileRequest, grpc.ServerStreamingServer[proto.DownloadFileResponse]) error {
+func (s *fileServiceServer) DownloadFile(req *proto.DownloadFileRequest, stream grpc.ServerStreamingServer[proto.DownloadFileResponse]) error {
+	fileId := req.GetFileId()
+
+	var err error
+	if fileId == "" {
+		fileId, err = s.metaDB.GetFileIdInIndex(stream.Context(), req.GetFileName())
+		if err != nil {
+			return err
+		}
+	}
+
+	f, err := os.Open(fileId)
+	if err != nil {
+		return err
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+
+	isLast := false
+	bytesToRead := req.GetLimit()
+
+	if bytesToRead == 0 {
+		bytesToRead = info.Size()
+	}
+
+	offset := int64(0)
+
+	for !isLast {
+		// io.ReadFull will return an error if it does not fill the buffer
+		if info.Size()-offset >= req.GetLimit() {
+			isLast = true
+			bytesToRead = info.Size() - offset
+		}
+
+		buf := make([]byte, bytesToRead)
+
+		if _, err = f.Seek(offset, 0); err != nil {
+			return err
+		}
+
+		if _, err = io.ReadFull(f, buf); err != nil {
+			return err
+		}
+
+		err = stream.Send(&proto.DownloadFileResponse{
+			Chunk: &proto.FileChunk{
+				Data:   buf,
+				Offset: offset,
+				IsLast: isLast,
+			}})
+
+		if err != nil {
+			s.logger.Printf("Error sending file chunk: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -105,6 +170,7 @@ func (s *fileServiceServer) ListFiles(ctx context.Context, req *proto.ListFilesR
 }
 
 func (s *fileServiceServer) GetFileInfo(ctx context.Context, req *proto.GetFileInfoRequest) (*proto.FileInfo, error) {
+	fmt.Printf("Recieved request %v", req)
 	return (*s.metaDB).GetFileInfo(ctx, req)
 }
 
@@ -116,7 +182,8 @@ func (s *fileServiceServer) DeleteFile(ctx context.Context, req *proto.DeleteFil
 	}
 
 	// Mark file metadata as being currently deleted
-	if err := s.metaDB.SetFileInfoStatus(ctx, fileId, metadata.STATUS_DELETING, false, s.logger); err != nil {
+	info, err := s.metaDB.SetFileInfoStatus(ctx, fileId, metadata.STATUS_DELETING, false, s.logger)
+	if err != nil {
 		return &emptypb.Empty{}, err
 	}
 
@@ -128,7 +195,7 @@ func (s *fileServiceServer) DeleteFile(ctx context.Context, req *proto.DeleteFil
 	}
 
 	// Delete file metadata
-	if err := s.metaDB.DeleteFileInfo(ctx, fileId); err != nil {
+	if err := s.metaDB.DeleteFileInfo(ctx, fileId, info.Name); err != nil {
 		return &emptypb.Empty{}, err
 	}
 
