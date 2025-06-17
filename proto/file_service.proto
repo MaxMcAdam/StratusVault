@@ -38,7 +38,8 @@ message FileMetadata {
   string content_type = 2;
   string mime_type = 3;
   int64 size = 4;
-  map<string, string> custom_metadata = 5;
+  bool overwrite = 5;
+  map<string, string> custom_metadata = 6;
 }
 
 message UploadFileResponse {

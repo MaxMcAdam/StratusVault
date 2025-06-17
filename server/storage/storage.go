@@ -3,7 +3,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"hash"
 	"io"
@@ -14,20 +13,19 @@ import (
 
 	"github.com/MaxMcAdam/StratusVault/proto"
 	"golang.org/x/sync/semaphore"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 type StorageBackend struct {
-	uploadSemaphore   *semaphore.Weighted // Limit concurrent uploads
-	downloadSemaphore *semaphore.Weighted // Limit concurrent downloads
+	UploadSemaphore   *semaphore.Weighted // Limit concurrent uploads
+	DownloadSemaphore *semaphore.Weighted // Limit concurrent downloads
 	config            *Config
 }
 
 func NewStorageBackend(maxUploads, maxDownloads, chunkSize, maxFileSize int64) *StorageBackend {
-	return &StorageBackend{uploadSemaphore: semaphore.NewWeighted(maxUploads),
-		downloadSemaphore: semaphore.NewWeighted(maxDownloads),
+	return &StorageBackend{UploadSemaphore: semaphore.NewWeighted(maxUploads),
+		DownloadSemaphore: semaphore.NewWeighted(maxDownloads),
 		config:            &Config{ChunkSize: chunkSize, MaxFileSize: maxFileSize}}
 }
 
@@ -36,80 +34,16 @@ type Config struct {
 	MaxFileSize int64
 }
 
-func (s *StorageBackend) HandleTempFileUpload(stream grpc.ClientStreamingServer[proto.UploadFileRequest, proto.UploadFileResponse], l *log.Logger, metadata *proto.FileInfo) error {
-	ctx := stream.Context()
-
-	// Rate limiting
-	if err := s.uploadSemaphore.Acquire(ctx, 1); err != nil {
-		return status.Error(codes.ResourceExhausted, "too many concurrent uploads")
-	}
-	defer s.uploadSemaphore.Release(1)
-
-	// Initialize upload state
-	var (
-		tempPath   = fmt.Sprintf("temp/%s", metadata.Id)
-		filename   string
-		totalSize  int64
-		checksum   = sha256.New()
-		buffer     bytes.Buffer
-		firstChunk = true
-	)
-
-	// Process streaming chunks
-	for {
-		select {
-		case <-ctx.Done():
-			fmt.Printf("Recieved ctx.Done()\n")
-			// Client cancelled or timed out
-			s.CleanupFailedUpload(tempPath, l)
-			return ctx.Err()
-
-		default:
-			req, err := stream.Recv()
-			if err == io.EOF {
-				// Client finished sending, finalize upload
-				return s.finalizeUpload(ctx, stream, &buffer, metadata.Id, tempPath, filename,
-					totalSize, checksum.Sum(nil), metadata, l)
-			}
-			if err != nil {
-				s.CleanupFailedUpload(tempPath, l)
-				return status.Error(codes.Internal, "stream error: "+err.Error())
-			}
-
-			// Handle first chunk (contains metadata)
-			if firstChunk {
-				if err := s.processFirstChunk(req, metadata); err != nil {
-					return err
-				}
-
-				// Validate file before starting upload
-				if err := s.ValidateUpload(ctx, filename, metadata.Size); err != nil {
-					return status.Error(codes.InvalidArgument, err.Error())
-				}
-
-				firstChunk = false
-				continue
-			}
-
-			// Process chunk data
-			if err := s.processChunk(ctx, req, &buffer, checksum, &totalSize, tempPath); err != nil {
-				s.CleanupFailedUpload(tempPath, l)
-				return err
-			}
-		}
-	}
-}
-
-func (s *StorageBackend) processFirstChunk(req *proto.UploadFileRequest, fileInfo *proto.FileInfo) error {
+func (s *StorageBackend) ProcessFirstChunk(req *proto.UploadFileRequest, fileInfo *proto.FileInfo) (bool, error) {
 	fmt.Printf("Processing first chunk for %s\n", fileInfo.Id)
 	metadata := req.GetMetadata()
 	if metadata == nil {
-		return status.Error(codes.InvalidArgument, "first chunk must contain metadata")
+		return false, status.Error(codes.InvalidArgument, "first chunk must contain metadata")
 	}
 
 	// Validate filename
 	if err := s.ValidateFilename(metadata.Name); err != nil {
-		return status.Error(codes.InvalidArgument, err.Error())
+		return false, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	// Update the fileInfo with the information provided in the request metadata
@@ -117,7 +51,7 @@ func (s *StorageBackend) processFirstChunk(req *proto.UploadFileRequest, fileInf
 	fileInfo.MimeType = metadata.MimeType
 	fileInfo.Size = metadata.Size
 
-	return nil
+	return metadata.Overwrite, nil
 }
 
 func (s *StorageBackend) ValidateFilename(f string) error {
@@ -132,7 +66,7 @@ func (s *StorageBackend) ValidateFileContent(ctx context.Context, tempPath strin
 	return nil
 }
 
-func (s *StorageBackend) processChunk(ctx context.Context, req *proto.UploadFileRequest,
+func (s *StorageBackend) ProcessChunk(ctx context.Context, req *proto.UploadFileRequest,
 	buffer *bytes.Buffer, checksum hash.Hash, totalSize *int64, tempPath string) error {
 
 	fmt.Printf("Processing chunk for %s\n", tempPath)
@@ -168,9 +102,8 @@ func (s *StorageBackend) processChunk(ctx context.Context, req *proto.UploadFile
 	return nil
 }
 
-func (s *StorageBackend) finalizeUpload(ctx context.Context, stream proto.FileService_UploadFileServer,
-	buffer *bytes.Buffer, fileID, tempPath, filename string, totalSize int64, checksumBytes []byte,
-	metadata *proto.FileInfo, l *log.Logger) error {
+func (s *StorageBackend) FinalizeUpload(ctx context.Context, stream proto.FileService_UploadFileServer,
+	buffer *bytes.Buffer, fileID, tempPath, filename string, totalSize int64, checksumBytes []byte, l *log.Logger) error {
 
 	// Flush remaining buffer
 	if buffer.Len() > 0 {

@@ -65,7 +65,7 @@ func (m *MetadataDB) ListFiles(ctx context.Context, req *proto.ListFilesRequest)
 		return nil, fmt.Errorf("Error getting file metadata: %v", err)
 	}
 
-	fileInfoSlice := make([]*proto.FileInfo, len(keys))
+	fileInfoSlice := []*proto.FileInfo{}
 
 	// Convert the list of interfaces returned to a list of file metadata types
 	for _, fileInfoInter := range fileInfoInterfSlice {
@@ -74,23 +74,22 @@ func (m *MetadataDB) ListFiles(ctx context.Context, req *proto.ListFilesRequest)
 			return nil, fmt.Errorf("Invalid redis response type.")
 		}
 
-		fileInfo := proto.FileInfo{}
+		fileInfo := &proto.FileInfo{}
 		if err := json.Unmarshal([]byte(str), &fileInfo); err != nil {
 			return nil, fmt.Errorf("Error unmarshalling file metadata: %v", err)
 		}
 
-		fileInfoSlice = append(fileInfoSlice, &fileInfo)
+		fileInfoSlice = append(fileInfoSlice, fileInfo)
 	}
 
 	return &proto.ListFilesResponse{Files: fileInfoSlice, NextPageToken: cursor, TotalCount: int32(len(keys))}, nil
 }
 
 // Get the single file with the given filename
-func (m *MetadataDB) GetFileInfo(ctx context.Context, req *proto.GetFileInfoRequest) (*proto.FileInfo, error) {
+func (m *MetadataDB) GetFileInfo(ctx context.Context, fileId, fileName string) (*proto.FileInfo, error) {
 	var err error
-	fileId := req.GetFileId()
 	if fileId == "" {
-		fileId, err = m.GetFileIdInIndex(ctx, req.GetFileName())
+		fileId, err = m.GetFileIdInIndex(ctx, fileName)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to get file id from index: %v", err)
 		}

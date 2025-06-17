@@ -3,6 +3,7 @@ module github.com/MaxMcAdam/StratusVault
 go 1.24.3
 
 require (
+	github.com/alecthomas/kong v1.11.0
 	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.10.0
 	golang.org/x/sync v0.11.0

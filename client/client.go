@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/MaxMcAdam/StratusVault/proto"
 )
 
-func UploadFile(client proto.FileServiceClient, filePath string) error {
+func UploadFile(client proto.FileServiceClient, filePath string, overwrite bool) error {
 	fmt.Printf("Starting upload.\n")
 	// Get the stream
 	stream, err := client.UploadFile(context.Background())
@@ -28,8 +28,9 @@ func UploadFile(client proto.FileServiceClient, filePath string) error {
 	err = stream.Send(&proto.UploadFileRequest{
 		Request: &proto.UploadFileRequest_Metadata{
 			Metadata: &proto.FileMetadata{
-				Name: filepath.Base(filePath),
-				Size: fileSize,
+				Name:      filepath.Base(filePath),
+				Size:      fileSize,
+				Overwrite: overwrite,
 			}},
 	})
 	if err != nil {
