@@ -32,30 +32,21 @@ func NewStorageBackend(maxUploads, maxDownloads, chunkSize, maxFileSize int64) *
 type Config struct {
 	ChunkSize   int64
 	MaxFileSize int64
+	StoragePath string
 }
 
-func (s *StorageBackend) ProcessFirstChunk(req *proto.UploadFileRequest, fileInfo *proto.FileInfo) (bool, error) {
-	fmt.Printf("Processing first chunk for %s\n", fileInfo.Id)
-	metadata := req.GetMetadata()
-	if metadata == nil {
-		return false, status.Error(codes.InvalidArgument, "first chunk must contain metadata")
-	}
-
-	// Validate filename
-	if err := s.ValidateFilename(metadata.Name); err != nil {
-		return false, status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	// Update the fileInfo with the information provided in the request metadata
-	fileInfo.Name = metadata.Name
-	fileInfo.MimeType = metadata.MimeType
-	fileInfo.Size = metadata.Size
-
-	return metadata.Overwrite, nil
+func Init() *StorageBackend {
+	return &StorageBackend{
+		UploadSemaphore:   semaphore.NewWeighted(3),
+		DownloadSemaphore: semaphore.NewWeighted(3),
+		config: &Config{ChunkSize: 1000,
+			MaxFileSize: 10000,
+			StoragePath: "~/.stratus/",
+		}}
 }
 
-func (s *StorageBackend) ValidateFilename(f string) error {
-	return nil
+func (s *StorageBackend) AddPath(f string) string {
+	return filepath.Join(s.config.StoragePath, f)
 }
 
 func (s *StorageBackend) ValidateUpload(ctx context.Context, filename string, size int64) error {
@@ -138,27 +129,30 @@ func (s *StorageBackend) Delete(ctx context.Context, tempPath string) error {
 	return os.Remove(tempPath)
 }
 
-func (s *StorageBackend) MoveFile(ctx context.Context, tempPath string, info *proto.FileInfo, l *log.Logger) (int64, error) {
+func (s *StorageBackend) MoveFile(ctx context.Context, tempPath string, id string, l *log.Logger) (int64, error) {
+	tempPath = s.AddPath(tempPath)
+	destPath := s.AddPath(id)
+
 	srcFile, err := os.OpenFile(tempPath, os.O_RDONLY, 0644)
 	if err != nil {
 		return 0, err
 	}
 	defer srcFile.Close()
 
-	destDir := filepath.Dir(info.Id)
+	destDir := filepath.Dir(destPath)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return 0, fmt.Errorf("cannot create destination directory: %w", err)
 	}
 
-	dstFile, err := os.Create(info.Id)
+	dstFile, err := os.Create(destPath)
 	if err != nil {
 		return 0, err
 	}
 	defer dstFile.Close()
 
 	fmt.Printf("Source: %s\n", tempPath)
-	fmt.Printf("Destination: %s\n", info.Id)
-	fmt.Printf("Destination dir: %s\n", filepath.Dir(info.Id))
+	fmt.Printf("Destination: %s\n", destPath)
+	fmt.Printf("Destination dir: %s\n", filepath.Dir(destPath))
 
 	bWritten, err := io.Copy(dstFile, srcFile)
 	if err != nil {
@@ -179,6 +173,8 @@ func (s *StorageBackend) MoveFile(ctx context.Context, tempPath string, info *pr
 }
 
 func (s *StorageBackend) AppendToFile(ctx context.Context, tempPath string, b []byte) error {
+	tempPath = s.AddPath(tempPath)
+
 	dirPath := filepath.Dir(tempPath)
 	err := os.MkdirAll(dirPath, 0755)
 	if err != nil {
