@@ -45,8 +45,6 @@ func (s *FileServiceServer) UploadFile(stream grpc.ClientStreamingServer[proto.U
 		return err
 	}
 
-	fmt.Printf("info is  %v\n", fileInfo)
-
 	// Update the file's status to reflect successful upload
 	fileInfo.Status = metadata.STATUS_TEMP_UPLOAD
 	now := time.Now()
@@ -128,7 +126,6 @@ func (s *FileServiceServer) handleTempFileUpload(stream grpc.ClientStreamingServ
 					return info, "", err
 				}
 				existingFileId, _ = s.metaDB.GetFileIdInIndex(ctx, fileMeta.Name)
-				fmt.Printf("existing file for name %v is: %v\n", fileMeta.Name, existingFileId)
 				info, err = s.HandleNewMetadata(ctx, fileMeta, info, existingFileId)
 				if err != nil {
 					return info, "", fmt.Errorf("Failed to handle new metadata: %v", err)

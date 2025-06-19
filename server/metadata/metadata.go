@@ -212,7 +212,6 @@ func (m *MetadataDB) DeleteFileInfo(ctx context.Context, id string, name string)
 }
 
 func (m *MetadataDB) OverwriteFileInfo(ctx context.Context, fileInfo *FileInfo, existingId string) (*FileInfo, error) {
-	fmt.Printf("existing id is %v\n", existingId)
 	if existingId == "" {
 		fileInfo.Id = fileInfo.UploadId
 		return fileInfo, nil
@@ -221,8 +220,6 @@ func (m *MetadataDB) OverwriteFileInfo(ctx context.Context, fileInfo *FileInfo, 
 	existingInfo, err := m.getFileInfo(ctx, existingId)
 	if err != nil {
 		return nil, err
-	} else {
-		fmt.Printf("existing info is %v\n", existingInfo)
 	}
 
 	existingInfo.UploadId = fileInfo.UploadId

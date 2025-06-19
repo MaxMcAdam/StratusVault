@@ -12,7 +12,6 @@ import (
 )
 
 func UploadFile(client proto.FileServiceClient, filePath string, overwrite bool) error {
-	fmt.Printf("Starting upload.\n")
 	// Get the stream
 	stream, err := client.UploadFile(context.Background())
 	if err != nil {

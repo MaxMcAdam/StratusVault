@@ -150,10 +150,6 @@ func (s *StorageBackend) MoveFile(ctx context.Context, tempPath string, id strin
 	}
 	defer dstFile.Close()
 
-	fmt.Printf("Source: %s\n", tempPath)
-	fmt.Printf("Destination: %s\n", destPath)
-	fmt.Printf("Destination dir: %s\n", filepath.Dir(destPath))
-
 	bWritten, err := io.Copy(dstFile, srcFile)
 	if err != nil {
 		fmt.Printf("Error copying file: %v\n", err)
