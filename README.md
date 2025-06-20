@@ -10,3 +10,15 @@ The client interacts with the server via a CLI.
 
 The server stores files in the local filesystem and file metadata in redis for quick access. The server expects a configuration file in the following format
 
+# Features
+- [x] upload and download files
+- [x] delete files
+- [x] list file
+- [x] list files with pagination
+- [ ] implement file watch
+- [x] make stateless client calls with a cli
+- [ ] list files with pagination through the cli
+- [ ] use file watch to sync files
+- [ ] secure gRPC TLS certs
+- [ ] sign files for integrity
+
