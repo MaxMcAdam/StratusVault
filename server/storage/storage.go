@@ -8,6 +8,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/user"
+	"path"
 	"path/filepath"
 	"time"
 
@@ -15,6 +17,10 @@ import (
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+)
+
+const (
+	STRATUS_VAULT_FOLDER = "stratus_vault/"
 )
 
 type StorageBackend struct {
@@ -35,14 +41,28 @@ type Config struct {
 	StoragePath string
 }
 
-func Init() *StorageBackend {
+func New() *StorageBackend {
+	user, err := user.Current()
+	if err != nil {
+		fmt.Printf("Error getting user info for home directory: %v", err)
+		os.Exit(1)
+	}
+	fp := path.Join(user.HomeDir, STRATUS_VAULT_FOLDER)
 	return &StorageBackend{
 		UploadSemaphore:   semaphore.NewWeighted(3),
 		DownloadSemaphore: semaphore.NewWeighted(3),
 		config: &Config{ChunkSize: 1000,
 			MaxFileSize: 10000,
-			StoragePath: "~/.stratus/",
+			StoragePath: fp,
 		}}
+}
+
+func NewWithConfig(cfg *Config) *StorageBackend {
+	return &StorageBackend{
+		UploadSemaphore:   semaphore.NewWeighted(3),
+		DownloadSemaphore: semaphore.NewWeighted(3),
+		config:            cfg,
+	}
 }
 
 func (s *StorageBackend) AddPath(f string) string {
@@ -93,8 +113,8 @@ func (s *StorageBackend) ProcessChunk(ctx context.Context, req *proto.UploadFile
 	return nil
 }
 
-func (s *StorageBackend) FinalizeUpload(ctx context.Context, stream proto.FileService_UploadFileServer,
-	buffer *bytes.Buffer, fileID, tempPath, filename string, totalSize int64, checksumBytes []byte, l *log.Logger) error {
+func (s *StorageBackend) FinalizeUpload(ctx context.Context, buffer *bytes.Buffer,
+	tempPath, filename string, totalSize int64, checksumBytes []byte, l *log.Logger) error {
 
 	// Flush remaining buffer
 	if buffer.Len() > 0 {
@@ -119,21 +139,19 @@ func (s *StorageBackend) CleanupFailedUpload(tempPath string, l *log.Logger) {
 		defer cancel()
 
 		if err := s.Delete(ctx, tempPath); err != nil {
-			l.Printf("failed to cleanup temp file path: %s error: %s", tempPath, err)
+			l.Printf("failed to cleanup temp file path: %s error: %s", s.AddPath(tempPath), err)
 		}
 	}
-	// fmt.Printf(string(debug.Stack()))
 }
 
 func (s *StorageBackend) Delete(ctx context.Context, tempPath string) error {
-	return os.Remove(tempPath)
+	return os.Remove(s.AddPath(tempPath))
 }
 
 func (s *StorageBackend) MoveFile(ctx context.Context, tempPath string, id string, l *log.Logger) (int64, error) {
-	tempPath = s.AddPath(tempPath)
 	destPath := s.AddPath(id)
 
-	srcFile, err := os.OpenFile(tempPath, os.O_RDONLY, 0644)
+	srcFile, err := os.OpenFile(s.AddPath(tempPath), os.O_RDONLY, 0644)
 	if err != nil {
 		return 0, err
 	}
@@ -162,7 +180,7 @@ func (s *StorageBackend) MoveFile(ctx context.Context, tempPath string, id strin
 
 	err = s.Delete(ctx, tempPath)
 	if err != nil {
-
+		return 0, err
 	}
 
 	return bWritten, nil
@@ -171,10 +189,12 @@ func (s *StorageBackend) MoveFile(ctx context.Context, tempPath string, id strin
 func (s *StorageBackend) AppendToFile(ctx context.Context, tempPath string, b []byte) error {
 	tempPath = s.AddPath(tempPath)
 
+	fmt.Printf("Writing to file %s\n", tempPath)
+
 	dirPath := filepath.Dir(tempPath)
 	err := os.MkdirAll(dirPath, 0755)
 	if err != nil {
-		return fmt.Errorf("error creating directories:", err)
+		return fmt.Errorf("error creating directories: %v", err)
 	}
 
 	file, err := os.OpenFile(tempPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)

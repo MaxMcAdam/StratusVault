@@ -23,10 +23,13 @@ type FileServiceServer struct {
 	proto.UnimplementedFileServiceServer
 }
 
-func Init() *FileServiceServer {
-	metaDB := metadata.Init()
+func New() (*FileServiceServer, error) {
+	metaDB, err := metadata.New()
+	if err != nil {
+		return nil, err
+	}
 
-	return &FileServiceServer{metaDB: metaDB, storage: storage.Init(), logger: log.New(os.Stdout, "", 1)}
+	return &FileServiceServer{metaDB: metaDB, storage: storage.New(), logger: log.New(os.Stdout, "", 1)}, nil
 }
 
 func (s *FileServiceServer) DownloadFile(req *proto.DownloadFileRequest, stream grpc.ServerStreamingServer[proto.DownloadFileResponse]) error {
@@ -110,7 +113,7 @@ func (s *FileServiceServer) DeleteFile(ctx context.Context, req *proto.DeleteFil
 	var err error
 	fileId := req.FileId
 	if fileId == "" {
-		fileId, err = metadata.Init().GetFileIdInIndex(ctx, req.FileName)
+		fileId, err = s.metaDB.GetFileIdInIndex(ctx, req.FileName)
 	}
 
 	// Mark file metadata as being currently deleted
@@ -127,6 +130,7 @@ func (s *FileServiceServer) DeleteFile(ctx context.Context, req *proto.DeleteFil
 	}
 
 	// Delete file metadata
+	fmt.Printf("Deleting: %s %s", fileId, info.Name)
 	if err := s.metaDB.DeleteFileInfo(ctx, fileId, info.Name); err != nil {
 		return &emptypb.Empty{}, err
 	}

@@ -64,7 +64,7 @@ type MetadataDB struct {
 	client *redis.Client
 }
 
-func Init() *MetadataDB {
+func New() (*MetadataDB, error) {
 	c := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379",
 		Password: "",
 		DB:       0,
@@ -73,13 +73,12 @@ func Init() *MetadataDB {
 	// Ping the Redis server to check the connection.
 	pong, err := c.Ping(context.Background()).Result()
 	if err != nil {
-		fmt.Println("Could not connect to Redis:", err)
-		return nil
+		return nil, fmt.Errorf("Could not connect to Redis: %v", err)
 	}
 
 	fmt.Println("Redis connected:", pong)
 
-	return &MetadataDB{client: c}
+	return &MetadataDB{client: c}, nil
 }
 
 func getKey(fileId string) string {
@@ -201,12 +200,14 @@ func (m *MetadataDB) SetFileInfoStatus(ctx context.Context, fileId, status strin
 }
 
 func (m *MetadataDB) DeleteFileInfo(ctx context.Context, id string, name string) error {
-	if fileId, err := m.GetFileId(ctx, id, name); err != nil {
+	if fileId, err := m.GetFileId(ctx, name, id); err != nil {
 		return err
 	} else if _, err := m.client.Del(ctx, getKey(fileId)).Result(); err != nil {
 		return err
 	} else if err = m.DeleteFileIdInIndex(ctx, name); err != nil {
 		return err
+	} else {
+		fmt.Printf("deleted %s and %s", getKey(fileId), name)
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"hash"
 	"io"
 	"log"
 	"time"
@@ -79,77 +80,177 @@ func (s *FileServiceServer) UploadFile(stream grpc.ClientStreamingServer[proto.U
 	return nil
 }
 
-func (s *FileServiceServer) handleTempFileUpload(stream grpc.ClientStreamingServer[proto.UploadFileRequest, proto.UploadFileResponse], l *log.Logger, info *metadata.FileInfo) (*metadata.FileInfo, string, error) {
-	ctx := stream.Context()
+// uploadState encapsulates all upload-related state
+type uploadState struct {
+	info           *metadata.FileInfo
+	filename       string
+	existingFileId string
+	totalSize      int64
+	checksum       hash.Hash
+	buffer         bytes.Buffer
+	firstChunk     bool
+}
+
+// newUploadState creates initialized upload state
+func newUploadState(info *metadata.FileInfo) *uploadState {
+	return &uploadState{
+		info:       info,
+		checksum:   sha256.New(),
+		firstChunk: true,
+	}
+}
+
+// handleTempFileUpload orchestrates the upload process with clear separation of concerns
+func (s *FileServiceServer) handleTempFileUpload(
+	stream grpc.ClientStreamingServer[proto.UploadFileRequest, proto.UploadFileResponse],
+	l *log.Logger,
+	info *metadata.FileInfo,
+) (*metadata.FileInfo, string, error) {
+
+	var err error
 
 	// Rate limiting
-	if err := s.storage.UploadSemaphore.Acquire(ctx, 1); err != nil {
+	if err := s.storage.UploadSemaphore.Acquire(stream.Context(), 1); err != nil {
 		return info, "", status.Error(codes.ResourceExhausted, "too many concurrent uploads")
 	}
 	defer s.storage.UploadSemaphore.Release(1)
 
 	// Initialize upload state
-	var (
-		filename       string
-		existingFileId string
-		totalSize      int64
-		checksum       = sha256.New()
-		buffer         bytes.Buffer
-		firstChunk     = true
+	state := newUploadState(info)
+
+	// Ensure cleanup on any failure
+	cleanup := &uploadCleanup{
+		storage:  s.storage,
+		uploadId: temp(info.UploadId),
+		logger:   l,
+	}
+	defer cleanup.onFailure(&err)
+
+	// Process the upload stream
+	if err := s.processUploadStream(stream, state); err != nil {
+		return state.info, "", err
+	}
+
+	// Finalize the upload
+	err = s.storage.FinalizeUpload(
+		stream.Context(),
+		&state.buffer,
+		temp(state.info.UploadId),
+		state.filename,
+		state.totalSize,
+		state.checksum.Sum(nil),
+		l,
 	)
 
-	// Process streaming chunks
+	if err != nil {
+		return state.info, "", err
+	}
+
+	cleanup.disable() // Success - don't cleanup
+	return state.info, state.existingFileId, nil
+}
+
+// uploadCleanup handles cleanup with RAII-style pattern
+type uploadCleanup struct {
+	storage  interface{ CleanupFailedUpload(string, *log.Logger) }
+	uploadId string
+	logger   *log.Logger
+	disabled bool
+}
+
+func (c *uploadCleanup) disable() {
+	c.disabled = true
+}
+
+func (c *uploadCleanup) onFailure(err *error) {
+	if !c.disabled && *err != nil {
+		c.storage.CleanupFailedUpload(c.uploadId, c.logger)
+	}
+}
+
+// processUploadStream handles the streaming logic with clear flow
+func (s *FileServiceServer) processUploadStream(
+	stream grpc.ClientStreamingServer[proto.UploadFileRequest, proto.UploadFileResponse],
+	state *uploadState,
+) error {
+	ctx := stream.Context()
+
 	for {
+		// Check for cancellation first
 		select {
 		case <-ctx.Done():
-			fmt.Printf("Recieved ctx.Done()\n")
-			// Client cancelled or timed out
-			s.storage.CleanupFailedUpload(temp(info.UploadId), l)
-			return info, "", ctx.Err()
-
+			fmt.Printf("Received ctx.Done()\n")
+			return ctx.Err()
 		default:
-			req, err := stream.Recv()
-			if err == io.EOF {
-				// Client finished sending, finalize upload
-				return info, existingFileId, s.storage.FinalizeUpload(ctx, stream, &buffer, info.Id, temp(info.UploadId), filename,
-					totalSize, checksum.Sum(nil), l)
-			}
-			if err != nil {
-				s.storage.CleanupFailedUpload(temp(info.UploadId), l)
-				return info, "", status.Error(codes.Internal, "stream error: "+err.Error())
-			}
+		}
 
-			// Handle first chunk (contains metadata)
-			if firstChunk {
-				fileMeta, err := s.ProcessFirstChunk(req)
-				if err != nil {
-					return info, "", err
-				}
-				existingFileId, _ = s.metaDB.GetFileIdInIndex(ctx, fileMeta.Name)
-				info, err = s.HandleNewMetadata(ctx, fileMeta, info, existingFileId)
-				if err != nil {
-					return info, "", fmt.Errorf("Failed to handle new metadata: %v", err)
-				}
+		// Receive next chunk
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return nil // Normal completion
+		}
+		if err != nil {
+			return status.Error(codes.Internal, "stream error: "+err.Error())
+		}
 
-				// Validate file before starting upload
-				if err := s.storage.ValidateUpload(ctx, filename, info.Size); err != nil {
-					return info, "", status.Error(codes.InvalidArgument, err.Error())
-				}
-
-				firstChunk = false
-				continue
-			}
-
-			// Process chunk data
-			if err := s.storage.ProcessChunk(ctx, req, &buffer, checksum, &totalSize, temp(info.UploadId)); err != nil {
-				s.storage.CleanupFailedUpload(temp(info.UploadId), l)
-				return info, "", err
-			}
+		// Process the chunk
+		if err := s.processChunk(ctx, req, state); err != nil {
+			return err
 		}
 	}
 }
 
-func (s *FileServiceServer) ProcessFirstChunk(req *proto.UploadFileRequest) (*proto.FileMetadata, error) {
+// processChunk handles individual chunk processing
+func (s *FileServiceServer) processChunk(
+	ctx context.Context,
+	req *proto.UploadFileRequest,
+	state *uploadState,
+) error {
+	if state.firstChunk {
+		return s.handleFirstChunk(ctx, req, state)
+	}
+
+	return s.storage.ProcessChunk(
+		ctx,
+		req,
+		&state.buffer,
+		state.checksum,
+		&state.totalSize,
+		temp(state.info.UploadId),
+	)
+}
+
+// processFirstChunk handles metadata initialization
+func (s *FileServiceServer) handleFirstChunk(
+	ctx context.Context,
+	req *proto.UploadFileRequest,
+	state *uploadState,
+) error {
+	// Extract and validate metadata
+	fileMeta, err := s.processFirstChunk(req)
+	if err != nil {
+		return err
+	}
+
+	// Check for existing file
+	state.existingFileId, _ = s.metaDB.GetFileIdInIndex(ctx, fileMeta.Name)
+
+	// Update file info with metadata
+	state.info, err = s.HandleNewMetadata(ctx, fileMeta, state.info, state.existingFileId)
+	if err != nil {
+		return fmt.Errorf("failed to handle new metadata: %v", err)
+	}
+
+	// Validate upload parameters
+	if err := s.storage.ValidateUpload(ctx, state.filename, state.info.Size); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	state.firstChunk = false
+	return nil
+}
+
+func (s *FileServiceServer) processFirstChunk(req *proto.UploadFileRequest) (*proto.FileMetadata, error) {
 	metadata := req.GetMetadata()
 	if metadata == nil {
 		return nil, status.Error(codes.InvalidArgument, "first chunk must contain metadata")

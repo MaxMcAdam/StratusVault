@@ -1,3 +1,4 @@
 server/main
 client/main
-server/test
+server/server
+cli/cli
