@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/MaxMcAdam/StratusVault/proto"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -77,22 +76,18 @@ func (s *StorageBackend) ValidateFileContent(ctx context.Context, tempPath strin
 	return nil
 }
 
-func (s *StorageBackend) ProcessChunk(ctx context.Context, req *proto.UploadFileRequest,
+func (s *StorageBackend) ProcessChunk(ctx context.Context, bytes []byte,
 	buffer *bytes.Buffer, checksum hash.Hash, totalSize *int64, tempPath string) error {
 
 	fmt.Printf("Processing chunk for %s\n", tempPath)
 
-	chunk := req.GetChunk()
-	if chunk == nil {
-		return fmt.Errorf("Error: recieved nil chunk. %v", req.GetMetadata())
-	}
-	if len(chunk.Data) == 0 {
+	if len(bytes) == 0 {
 		return nil // Skip empty chunks
 	}
 
 	// Update checksum
-	checksum.Write(chunk.Data)
-	*totalSize += int64(len(chunk.Data))
+	checksum.Write(bytes)
+	*totalSize += int64(len(bytes))
 
 	// Check size limits
 	if *totalSize > s.config.MaxFileSize {
@@ -100,7 +95,7 @@ func (s *StorageBackend) ProcessChunk(ctx context.Context, req *proto.UploadFile
 	}
 
 	// Buffer chunks for efficient storage writes
-	buffer.Write(chunk.Data)
+	buffer.Write(bytes)
 
 	// Flush buffer when it gets large enough
 	if buffer.Len() >= int(s.config.ChunkSize) {
@@ -146,6 +141,10 @@ func (s *StorageBackend) CleanupFailedUpload(tempPath string, l *log.Logger) {
 
 func (s *StorageBackend) Delete(ctx context.Context, tempPath string) error {
 	return os.Remove(s.AddPath(tempPath))
+}
+
+func (s *StorageBackend) RenameFile(ctx context.Context, oldName, newName string) error {
+	return os.Rename(s.AddPath(oldName), s.AddPath(newName))
 }
 
 func (s *StorageBackend) MoveFile(ctx context.Context, tempPath string, id string, l *log.Logger) (int64, error) {

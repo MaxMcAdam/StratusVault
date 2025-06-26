@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -21,6 +22,7 @@ const (
 	STATUS_DELETING    = "deleting"
 	STATUS_ACTIVE      = "active"
 	STATUS_TEMP_UPLOAD = "temp_upload"
+	STATUS_OVERWRITING = "overwriting"
 )
 
 type FileInfo struct {
@@ -35,6 +37,9 @@ type FileInfo struct {
 }
 
 func FromProto(p *proto.FileInfo) *FileInfo {
+	if p == nil {
+		return nil
+	}
 	created := p.CreatedAt.AsTime()
 	updated := p.UpdatedAt.AsTime()
 	return &FileInfo{
@@ -49,6 +54,9 @@ func FromProto(p *proto.FileInfo) *FileInfo {
 }
 
 func ToProto(f *FileInfo) *proto.FileInfo {
+	if f == nil {
+		return nil
+	}
 	return &proto.FileInfo{
 		Name:      f.Name,
 		Id:        f.Id,
@@ -130,6 +138,9 @@ func (m *MetadataDB) GetFileInfo(ctx context.Context, fileId, fileName string) (
 	var err error
 	if fileId == "" {
 		fileId, err = m.GetFileIdInIndex(ctx, fileName)
+		if errors.Is(err, redis.Nil) {
+			return nil, nil
+		}
 		if err != nil {
 			return nil, fmt.Errorf("Failed to get file id from index: %v", err)
 		}
