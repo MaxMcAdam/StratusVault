@@ -204,7 +204,7 @@ func (s *FileServiceServer) handleExistingFile(ctx context.Context, meta *proto.
 		return fmt.Errorf("no existing file to overwrite: %s", meta.Name)
 	}
 	if !meta.Overwrite && existingInfo != nil {
-		return fmt.Errorf("file already exists: %s", meta.Name)
+		return fmt.Errorf("file already exists")
 	}
 
 	// Handle overwrite case
