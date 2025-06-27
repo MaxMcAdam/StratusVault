@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"github.com/MaxMcAdam/StratusVault/proto"
 	"github.com/MaxMcAdam/StratusVault/server/metadata"
@@ -19,6 +20,8 @@ type FileServiceServer struct {
 	storage *storage.StorageBackend
 	metaDB  *metadata.MetadataDB
 	logger  *log.Logger
+	genUUID func() string
+	now     func() time.Time
 
 	proto.UnimplementedFileServiceServer
 }
@@ -29,7 +32,7 @@ func New() (*FileServiceServer, error) {
 		return nil, err
 	}
 
-	return &FileServiceServer{metaDB: metaDB, storage: storage.New(), logger: log.New(os.Stdout, "", 1)}, nil
+	return &FileServiceServer{metaDB: metaDB, storage: storage.New(), logger: log.New(os.Stdout, "", 1), genUUID: generateFileID}, nil
 }
 
 func (s *FileServiceServer) DownloadFile(req *proto.DownloadFileRequest, stream grpc.ServerStreamingServer[proto.DownloadFileResponse]) error {
@@ -148,4 +151,8 @@ func generateFileID() string {
 
 func temp(id string) string {
 	return fmt.Sprintf("temp/%s", id)
+}
+
+func now() time.Time {
+	return time.Now()
 }

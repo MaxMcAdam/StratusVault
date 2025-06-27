@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"time"
 
 	"github.com/MaxMcAdam/StratusVault/proto"
 	"github.com/MaxMcAdam/StratusVault/server/metadata"
@@ -139,7 +138,7 @@ func (s *FileServiceServer) ProcessUpload(ctx context.Context, requests <-chan U
 
 	// Initialize upload state
 	info := &metadata.FileInfo{
-		UploadId: generateFileID(),
+		UploadId: s.genUUID(),
 		Status:   metadata.STATUS_UPLOADING,
 	}
 	state := newUploadState(info)
@@ -177,6 +176,7 @@ func (s *FileServiceServer) ProcessUpload(ctx context.Context, requests <-chan U
 	if err := s.finalizeUpload(ctx, state, &artifacts); err != nil {
 		return &UploadResult{Error: err}
 	}
+	artifacts.uploadID = ""
 
 	return &UploadResult{
 		FileID:       info.Id,
@@ -286,7 +286,7 @@ func (s *FileServiceServer) finalizeUpload(ctx context.Context, state *uploadSta
 
 // updateFileMetadata sets the file to temp upload status
 func (s *FileServiceServer) updateFileMetadata(state *uploadState) error {
-	now := time.Now()
+	now := s.now()
 	state.info.Status = metadata.STATUS_TEMP_UPLOAD
 	state.info.UpdatedAt = &now
 
