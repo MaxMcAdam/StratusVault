@@ -157,8 +157,8 @@ func (s *FileServiceServer) ProcessUpload(ctx context.Context, requests <-chan U
 
 	// Set up file metadata
 	s.setupFileMetadata(info, meta)
-	artifacts.uploadID = info.Id
 
+	artifacts.uploadID = info.Id
 	// Create metadata record
 	if err := s.metaDB.SetFileInfo(ctx, info); err != nil {
 		return &UploadResult{Error: fmt.Errorf("creating file metadata: %w", err)}

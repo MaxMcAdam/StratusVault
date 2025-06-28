@@ -9,20 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/MaxMcAdam/StratusVault/proto"
 )
 
 func Test_UploadProcess(t *testing.T) {
 	testbytes := []byte("Testdata goes here.")
-	reqChunk := &proto.UploadFileRequest{
-		Request: &proto.UploadFileRequest_Chunk{
-			Chunk: &proto.FileChunk{
-				Data:   testbytes,
-				Offset: 0,
-				IsLast: true,
-			}},
-	}
 
 	testFolder := t.TempDir()
 	tempLoc := "temp_file"
@@ -33,7 +23,7 @@ func Test_UploadProcess(t *testing.T) {
 	size := int64(len(testbytes))
 
 	// process the chunk
-	err := strg.ProcessChunk(context.Background(), reqChunk, buf, sha256.New(), &size, "testfile")
+	err := strg.ProcessChunk(context.Background(), testbytes, buf, sha256.New(), &size, "testfile")
 	if err != nil {
 		t.Fatalf("Failed to process chunk: %v", err)
 	}

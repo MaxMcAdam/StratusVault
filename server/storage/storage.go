@@ -28,12 +28,6 @@ type StorageBackend struct {
 	config            *Config
 }
 
-func NewStorageBackend(maxUploads, maxDownloads, chunkSize, maxFileSize int64) *StorageBackend {
-	return &StorageBackend{UploadSemaphore: semaphore.NewWeighted(maxUploads),
-		DownloadSemaphore: semaphore.NewWeighted(maxDownloads),
-		config:            &Config{ChunkSize: chunkSize, MaxFileSize: maxFileSize}}
-}
-
 type Config struct {
 	ChunkSize   int64
 	MaxFileSize int64
@@ -78,8 +72,6 @@ func (s *StorageBackend) ValidateFileContent(ctx context.Context, tempPath strin
 
 func (s *StorageBackend) ProcessChunk(ctx context.Context, bytes []byte,
 	buffer *bytes.Buffer, checksum hash.Hash, totalSize *int64, tempPath string) error {
-
-	fmt.Printf("Processing chunk for %s\n", tempPath)
 
 	if len(bytes) == 0 {
 		return nil // Skip empty chunks
@@ -187,8 +179,6 @@ func (s *StorageBackend) MoveFile(ctx context.Context, tempPath string, id strin
 
 func (s *StorageBackend) AppendToFile(ctx context.Context, tempPath string, b []byte) error {
 	tempPath = s.AddPath(tempPath)
-
-	fmt.Printf("Writing to file %s\n", tempPath)
 
 	dirPath := filepath.Dir(tempPath)
 	err := os.MkdirAll(dirPath, 0755)

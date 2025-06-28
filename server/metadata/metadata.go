@@ -89,6 +89,10 @@ func New() (*MetadataDB, error) {
 	return &MetadataDB{client: c}, nil
 }
 
+func NewWithClient(c *redis.Client) *MetadataDB {
+	return &MetadataDB{client: c}
+}
+
 func getKey(fileId string) string {
 	return fmt.Sprintf("%s:%s", FILE_PREFIX, fileId)
 }
@@ -270,7 +274,7 @@ func (m *MetadataDB) DeleteFileIdInIndex(ctx context.Context, fileName string) e
 // Delete the metadata record of failed upload
 // Return no error since this is a cleanup function
 func (m *MetadataDB) CleanupFailedUpload(ctx context.Context, fileId string, l *log.Logger) {
-	if _, err := m.client.Del(ctx, fileId).Result(); err != nil {
+	if _, err := m.client.Del(ctx, getKey(fileId)).Result(); err != nil {
 		log.Printf("Error deleting record from failed upload: %v", err)
 	}
 }
