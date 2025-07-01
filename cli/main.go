@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/MaxMcAdam/StratusVault/client"
 	"github.com/MaxMcAdam/StratusVault/client/config"
@@ -49,10 +50,21 @@ func Validate(ctx *kong.Context) error {
 }
 
 func main() {
-	// Establish connection to the gRPC server
-	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	cfg, err := config.NewConfig("")
 	if err != nil {
-		fmt.Println("Failed to connect: %v", err)
+		fmt.Printf("Failed to create config: %v\n", err)
+		os.Exit(1)
+	}
+
+	creds := cfg.TLSCreds
+	if creds == nil {
+		creds = insecure.NewCredentials()
+	}
+	// Establish connection to the gRPC server
+	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(creds))
+	if err != nil {
+		fmt.Printf("Failed to connect: %v\n", err)
+		os.Exit(1)
 	}
 	defer conn.Close()
 
@@ -76,7 +88,7 @@ func main() {
 		}
 	case "download <filename>":
 		name := CLI.Download.Filename
-		err = client.DownloadFile(c, name, "", &config.ClientConfig{ChunkSize: 1000})
+		err = client.DownloadFile(c, name, "", cfg)
 		if err != nil {
 			fmt.Printf("Error downloading file: %v\n", err)
 		}

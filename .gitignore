@@ -2,3 +2,5 @@ server/main
 client/main
 server/server
 cli/cli
+*.pem
+*/*.pem

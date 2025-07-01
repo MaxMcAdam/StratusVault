@@ -18,20 +18,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const (
-	STRATUS_VAULT_FOLDER = "stratus_vault/"
-)
-
 type StorageBackend struct {
 	UploadSemaphore   *semaphore.Weighted // Limit concurrent uploads
 	DownloadSemaphore *semaphore.Weighted // Limit concurrent downloads
 	config            *Config
-}
-
-type Config struct {
-	ChunkSize   int64
-	MaxFileSize int64
-	StoragePath string
 }
 
 func New() *StorageBackend {

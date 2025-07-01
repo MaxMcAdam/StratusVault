@@ -46,10 +46,6 @@ type EventInfo struct {
 	DeletionTime *time.Time
 }
 
-type Config struct {
-	Addr string
-}
-
 func FromProto(p *proto.FileInfo) *FileInfo {
 	if p == nil {
 		return nil

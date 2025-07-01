@@ -20,6 +20,7 @@ type FileServiceServer struct {
 	storage *storage.StorageBackend
 	metaDB  *metadata.MetadataDB
 	logger  *log.Logger
+	Config  *BackendConfig
 	genUUID func() string
 	now     func() time.Time
 
@@ -27,12 +28,17 @@ type FileServiceServer struct {
 }
 
 func New() (*FileServiceServer, error) {
-	metaDB, err := metadata.New()
+	c, err := NewConfig("")
 	if err != nil {
 		return nil, err
 	}
 
-	return &FileServiceServer{metaDB: metaDB, storage: storage.New(), logger: log.New(os.Stdout, "", 1), genUUID: generateFileID}, nil
+	metaDB, err := metadata.NewWithConfig(c.Metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	return &FileServiceServer{metaDB: metaDB, storage: storage.NewWithConfig(c.Storage), logger: log.New(os.Stdout, "", 1), Config: c, genUUID: generateFileID}, nil
 }
 
 func (s *FileServiceServer) DownloadFile(req *proto.DownloadFileRequest, stream grpc.ServerStreamingServer[proto.DownloadFileResponse]) error {

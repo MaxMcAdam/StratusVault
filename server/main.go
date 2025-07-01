@@ -17,11 +17,11 @@ func main() {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 
-	s := grpc.NewServer()
 	back, err := backend.New()
 	if err != nil {
 		log.Fatalf("Failed to initialize backend: %v", err)
 	}
+	s := grpc.NewServer(grpc.Creds(*back.Config.TLSCreds))
 	proto.RegisterFileServiceServer(s, back)
 
 	log.Printf("Server starting on :%s\n", port)
