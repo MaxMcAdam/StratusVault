@@ -252,8 +252,6 @@ func (m *MetadataDB) DeleteFileInfo(ctx context.Context, id string, name string)
 		return err
 	} else if err = m.DeleteFileIdInIndex(ctx, name); err != nil {
 		return err
-	} else {
-		fmt.Printf("deleted %s and %s", getKey(fileId), name)
 	}
 	return nil
 }

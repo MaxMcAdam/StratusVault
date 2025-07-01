@@ -36,11 +36,27 @@ func New() (*FileServiceServer, error) {
 }
 
 func (s *FileServiceServer) DownloadFile(req *proto.DownloadFileRequest, stream grpc.ServerStreamingServer[proto.DownloadFileResponse]) error {
+	c := make(chan *proto.DownloadFileResponse)
+
+	isLast := false
+	for !isLast {
+		resp := <-c
+		if err := stream.Send(resp); err != nil {
+			return err
+		}
+
+		isLast = resp.Chunk.IsLast
+	}
+
+	return nil
+}
+
+func (s *FileServiceServer) HandleDownloadRequest(ctx context.Context, req *proto.DownloadFileRequest, c chan<- *proto.DownloadFileResponse) error {
 	fileId := req.GetFileId()
 
 	var err error
 	if fileId == "" {
-		fileId, err = s.metaDB.GetFileIdInIndex(stream.Context(), req.GetFileName())
+		fileId, err = s.metaDB.GetFileIdInIndex(ctx, req.GetFileName())
 		if err != nil {
 			return err
 		}
@@ -67,7 +83,7 @@ func (s *FileServiceServer) DownloadFile(req *proto.DownloadFileRequest, stream 
 
 	for !isLast {
 		// io.ReadFull will return an error if it does not fill the buffer
-		if info.Size()-offset >= req.GetLimit() {
+		if info.Size()-offset <= req.GetLimit() {
 			isLast = true
 			bytesToRead = info.Size() - offset
 		}
@@ -75,35 +91,35 @@ func (s *FileServiceServer) DownloadFile(req *proto.DownloadFileRequest, stream 
 		buf := make([]byte, bytesToRead)
 
 		if _, err = f.Seek(offset, 0); err != nil {
+			fmt.Printf("Error seeking\n")
 			return err
 		}
 
 		if _, err = io.ReadFull(f, buf); err != nil {
+			fmt.Printf("Error reading\n")
 			return err
 		}
 
-		err = stream.Send(&proto.DownloadFileResponse{
+		c <- &proto.DownloadFileResponse{
 			Chunk: &proto.FileChunk{
 				Data:   buf,
 				Offset: offset,
 				IsLast: isLast,
-			}})
+			}}
 
-		if err != nil {
-			s.logger.Printf("Error sending file chunk: %v", err)
-		}
+		offset += bytesToRead
 	}
 
 	return nil
 }
 
 func (s *FileServiceServer) ListFiles(ctx context.Context, req *proto.ListFilesRequest) (*proto.ListFilesResponse, error) {
-	fmt.Printf("Recieved request %v", req)
+	s.logger.Printf("Recieved request %v", req)
 	return (*s.metaDB).ListProtoFiles(ctx, req)
 }
 
 func (s *FileServiceServer) GetFileInfo(ctx context.Context, req *proto.GetFileInfoRequest) (*proto.FileInfo, error) {
-	fmt.Printf("Recieved request %v", req)
+	s.logger.Printf("Recieved request %v", req)
 	if info, err := (*s.metaDB).GetFileInfo(ctx, req.FileId, req.FileName); err != nil {
 		return nil, err
 	} else {
@@ -133,7 +149,6 @@ func (s *FileServiceServer) DeleteFile(ctx context.Context, req *proto.DeleteFil
 	}
 
 	// Delete file metadata
-	fmt.Printf("Deleting: %s %s", fileId, info.Name)
 	if err := s.metaDB.DeleteFileInfo(ctx, fileId, info.Name); err != nil {
 		return &emptypb.Empty{}, err
 	}

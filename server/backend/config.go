@@ -19,4 +19,5 @@ func importCert(string) (*tls.Certificate, error) {
 	// 	return nil, fmt.Errorf("Error reading cert file: %v", err)
 	// }
 
+	return nil, nil
 }
