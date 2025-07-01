@@ -20,12 +20,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	FileService_UploadFile_FullMethodName   = "/fileservice.v1.FileService/UploadFile"
-	FileService_DownloadFile_FullMethodName = "/fileservice.v1.FileService/DownloadFile"
-	FileService_ListFiles_FullMethodName    = "/fileservice.v1.FileService/ListFiles"
-	FileService_GetFileInfo_FullMethodName  = "/fileservice.v1.FileService/GetFileInfo"
-	FileService_DeleteFile_FullMethodName   = "/fileservice.v1.FileService/DeleteFile"
-	FileService_WatchFiles_FullMethodName   = "/fileservice.v1.FileService/WatchFiles"
+	FileService_UploadFile_FullMethodName    = "/fileservice.v1.FileService/UploadFile"
+	FileService_DownloadFile_FullMethodName  = "/fileservice.v1.FileService/DownloadFile"
+	FileService_ListFiles_FullMethodName     = "/fileservice.v1.FileService/ListFiles"
+	FileService_GetFileInfo_FullMethodName   = "/fileservice.v1.FileService/GetFileInfo"
+	FileService_DeleteFile_FullMethodName    = "/fileservice.v1.FileService/DeleteFile"
+	FileService_GetFileEvents_FullMethodName = "/fileservice.v1.FileService/GetFileEvents"
 )
 
 // FileServiceClient is the client API for FileService service.
@@ -42,8 +42,8 @@ type FileServiceClient interface {
 	GetFileInfo(ctx context.Context, in *GetFileInfoRequest, opts ...grpc.CallOption) (*FileInfo, error)
 	// Delete a file
 	DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	// Watch for file changes
-	WatchFiles(ctx context.Context, in *WatchFilesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FileEvent], error)
+	// List file changes
+	GetFileEvents(ctx context.Context, in *GetFileEventsRequest, opts ...grpc.CallOption) (*GetFileEventsResponse, error)
 }
 
 type fileServiceClient struct {
@@ -116,24 +116,15 @@ func (c *fileServiceClient) DeleteFile(ctx context.Context, in *DeleteFileReques
 	return out, nil
 }
 
-func (c *fileServiceClient) WatchFiles(ctx context.Context, in *WatchFilesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FileEvent], error) {
+func (c *fileServiceClient) GetFileEvents(ctx context.Context, in *GetFileEventsRequest, opts ...grpc.CallOption) (*GetFileEventsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &FileService_ServiceDesc.Streams[2], FileService_WatchFiles_FullMethodName, cOpts...)
+	out := new(GetFileEventsResponse)
+	err := c.cc.Invoke(ctx, FileService_GetFileEvents_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[WatchFilesRequest, FileEvent]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
+	return out, nil
 }
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type FileService_WatchFilesClient = grpc.ServerStreamingClient[FileEvent]
 
 // FileServiceServer is the server API for FileService service.
 // All implementations must embed UnimplementedFileServiceServer
@@ -149,8 +140,8 @@ type FileServiceServer interface {
 	GetFileInfo(context.Context, *GetFileInfoRequest) (*FileInfo, error)
 	// Delete a file
 	DeleteFile(context.Context, *DeleteFileRequest) (*emptypb.Empty, error)
-	// Watch for file changes
-	WatchFiles(*WatchFilesRequest, grpc.ServerStreamingServer[FileEvent]) error
+	// List file changes
+	GetFileEvents(context.Context, *GetFileEventsRequest) (*GetFileEventsResponse, error)
 	mustEmbedUnimplementedFileServiceServer()
 }
 
@@ -176,8 +167,8 @@ func (UnimplementedFileServiceServer) GetFileInfo(context.Context, *GetFileInfoR
 func (UnimplementedFileServiceServer) DeleteFile(context.Context, *DeleteFileRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteFile not implemented")
 }
-func (UnimplementedFileServiceServer) WatchFiles(*WatchFilesRequest, grpc.ServerStreamingServer[FileEvent]) error {
-	return status.Errorf(codes.Unimplemented, "method WatchFiles not implemented")
+func (UnimplementedFileServiceServer) GetFileEvents(context.Context, *GetFileEventsRequest) (*GetFileEventsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetFileEvents not implemented")
 }
 func (UnimplementedFileServiceServer) mustEmbedUnimplementedFileServiceServer() {}
 func (UnimplementedFileServiceServer) testEmbeddedByValue()                     {}
@@ -272,16 +263,23 @@ func _FileService_DeleteFile_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _FileService_WatchFiles_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(WatchFilesRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+func _FileService_GetFileEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetFileEventsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
 	}
-	return srv.(FileServiceServer).WatchFiles(m, &grpc.GenericServerStream[WatchFilesRequest, FileEvent]{ServerStream: stream})
+	if interceptor == nil {
+		return srv.(FileServiceServer).GetFileEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FileService_GetFileEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileServiceServer).GetFileEvents(ctx, req.(*GetFileEventsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type FileService_WatchFilesServer = grpc.ServerStreamingServer[FileEvent]
 
 // FileService_ServiceDesc is the grpc.ServiceDesc for FileService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -302,6 +300,10 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "DeleteFile",
 			Handler:    _FileService_DeleteFile_Handler,
 		},
+		{
+			MethodName: "GetFileEvents",
+			Handler:    _FileService_GetFileEvents_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -312,11 +314,6 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "DownloadFile",
 			Handler:       _FileService_DownloadFile_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "WatchFiles",
-			Handler:       _FileService_WatchFiles_Handler,
 			ServerStreams: true,
 		},
 	},

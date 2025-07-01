@@ -13,7 +13,8 @@ message FileInfo {
   string status = 5;
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp updated_at = 7;
-  map<string, string> metadata = 8;
+  int64 LastUpdated = 8;
+  map<string, string> metadata = 9;
 }
 
 message FileChunk {

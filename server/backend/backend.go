@@ -141,8 +141,46 @@ func (s *FileServiceServer) DeleteFile(ctx context.Context, req *proto.DeleteFil
 	return &emptypb.Empty{}, nil
 }
 
-func (s *FileServiceServer) WatchFiles(*proto.WatchFilesRequest, grpc.ServerStreamingServer[proto.FileEvent]) error {
-	return nil
+func (s *FileServiceServer) GetFileEvents(ctx context.Context, req *proto.GetFileEventsRequest) (*proto.GetFileEventsResponse, error) {
+	resp := &proto.GetFileEventsResponse{Events: []*proto.FileEvent{}}
+
+	for _, fileEventReq := range req.Tokens {
+		info, err := s.metaDB.GetFileInfo(ctx, fileEventReq.Name, fileEventReq.Id)
+		if err != nil {
+			return nil, err
+		}
+		if info.Status == metadata.STATUS_DELETED {
+			resp.Events = append(resp.Events,
+				&proto.FileEvent{EventType: proto.FileEvent_EVENT_TYPE_DELETED,
+					Id:   info.Id,
+					Name: info.Name,
+				})
+			continue
+		}
+		if fileEventReq.LastToken == 0 {
+			resp.Events = append(resp.Events,
+				&proto.FileEvent{EventType: proto.FileEvent_EVENT_TYPE_CREATED,
+					Id:   info.Id,
+					Name: info.Name,
+				})
+		}
+		if info.Id != "" && info.Events.LastRenamed > fileEventReq.LastToken {
+			resp.Events = append(resp.Events,
+				&proto.FileEvent{EventType: proto.FileEvent_EVENT_TYPE_RENAMED,
+					Id:   info.Id,
+					Name: info.Name,
+				})
+		}
+		if info.Events.LastUpdated > fileEventReq.LastToken {
+			resp.Events = append(resp.Events,
+				&proto.FileEvent{EventType: proto.FileEvent_EVENT_TYPE_UPDATED,
+					Id:   info.Id,
+					Name: info.Name,
+				})
+		}
+	}
+
+	return resp, nil
 }
 
 func generateFileID() string {

@@ -22,8 +22,8 @@ service FileService {
   // Delete a file
   rpc DeleteFile(DeleteFileRequest) returns (google.protobuf.Empty);
   
-  // Watch for file changes
-  rpc WatchFiles(WatchFilesRequest) returns (stream FileEvent);
+  // List file changes
+  rpc GetFileEvents(GetFileEventsRequest) returns (GetFileEventsResponse);
 }
 
 message UploadFileRequest {
@@ -79,18 +79,32 @@ message DeleteFileRequest {
   string file_name = 2;
 }
 
-message WatchFilesRequest {
-  repeated string file_ids = 1;  // Empty means watch all
+message GetFileEventsRequest {
+  repeated file_id_token tokens = 1;           
+}
+
+message file_id_token {
+  string id = 1;
+  string name = 2;
+  uint64 last_token = 3;
+}
+
+message GetFileEventsResponse {
+  repeated FileEvent events = 1;      
+  bool has_more = 3;            
+  int32 events_returned = 4;    
 }
 
 message FileEvent {
   enum EventType {
-    EVENT_TYPE_UNSPECIFIED = 0;
-    EVENT_TYPE_CREATED = 1;
-    EVENT_TYPE_UPDATED = 2;
-    EVENT_TYPE_DELETED = 3;
+    EVENT_TYPE_CREATED = 0;
+    EVENT_TYPE_UPDATED = 1;
+    EVENT_TYPE_DELETED = 2;
+    EVENT_TYPE_RENAMED = 3;
   }
   
   EventType event_type = 1;
-  FileInfo file_info = 2;
+  string id = 2;
+  string name = 3;
+  uint64 next_token = 4;  
 }

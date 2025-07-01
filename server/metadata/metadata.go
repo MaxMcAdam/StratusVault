@@ -20,6 +20,7 @@ const (
 	STATUS_UPLOADING   = "uploading"
 	STATUS_UPDATING    = "updating"
 	STATUS_DELETING    = "deleting"
+	STATUS_DELETED     = "deleted"
 	STATUS_ACTIVE      = "active"
 	STATUS_TEMP_UPLOAD = "temp_upload"
 	STATUS_OVERWRITING = "overwriting"
@@ -34,6 +35,19 @@ type FileInfo struct {
 	Status    string
 	CreatedAt *time.Time
 	UpdatedAt *time.Time
+	Events    *EventInfo
+}
+
+// version is the most recent version of the file
+// deletion time marks when the file metadata will become invalid
+type EventInfo struct {
+	LastUpdated  uint64
+	LastRenamed  uint64
+	DeletionTime *time.Time
+}
+
+type Config struct {
+	Addr string
 }
 
 func FromProto(p *proto.FileInfo) *FileInfo {
@@ -74,6 +88,23 @@ type MetadataDB struct {
 
 func New() (*MetadataDB, error) {
 	c := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379",
+		Password: "",
+		DB:       0,
+	})
+
+	// Ping the Redis server to check the connection.
+	pong, err := c.Ping(context.Background()).Result()
+	if err != nil {
+		return nil, fmt.Errorf("Could not connect to Redis: %v", err)
+	}
+
+	fmt.Println("Redis connected:", pong)
+
+	return &MetadataDB{client: c}, nil
+}
+
+func NewWithConfig(config *Config) (*MetadataDB, error) {
+	c := redis.NewClient(&redis.Options{Addr: config.Addr,
 		Password: "",
 		DB:       0,
 	})
