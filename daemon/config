@@ -1,0 +1,36 @@
+{
+  "server_address": "localhost:50051",
+  "poll_interval": "30s",
+  "state_file": "/var/lib/stratusvault/daemon.state",
+  "log_file": "/var/log/stratusvault/daemon.log",
+  "max_retries": 3,
+  "retry_delay": "5s",
+  "chunk_size": 32768,
+  "concurrent_files": 5,
+  "watched_files": [
+    {
+      "id": "file-uuid-1",
+      "name": "important-config.yaml",
+      "local_path": "/etc/myapp/config.yaml",
+      "last_token": 0,
+      "last_size": 0,
+      "enabled": true
+    },
+    {
+      "id": "file-uuid-2", 
+      "name": "database-backup.sql",
+      "local_path": "/var/backups/database.sql",
+      "last_token": 0,
+      "last_size": 0,
+      "enabled": true
+    },
+    {
+      "id": "file-uuid-3",
+      "name": "ssl-certificate.pem",
+      "local_path": "/etc/ssl/certs/app.pem",
+      "last_token": 0,
+      "last_size": 0,
+      "enabled": true
+    }
+  ]
+}
